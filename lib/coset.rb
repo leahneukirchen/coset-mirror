@@ -4,6 +4,7 @@ class Coset
   @@routes = []  unless defined? @@routes
 
   def call(env)
+    @env = env
     path = env["PATH_INFO"]
     path = "/"  if path.empty?
     @res = Rack::Response.new
@@ -13,74 +14,115 @@ class Coset
   end
 
   def run(path, everb=//)
+    @wants = []
+    @EXT = ""
+
     @@routes.each { |rx, verb, fields, meth|
       if path =~ rx && everb === verb
         fields.each_with_index { |field, index|
           instance_variable_set "@#{field}", $~[index+1]
         }
-        return __send__(meth)
+        __send__(meth)
+        run_wants  unless @wants.empty?
+        return
       end
     }
     res.status = 404
-    req.env["rack.showstatus.detail"] = "<h2>Routes:</h2><pre><code>#{Rack::Utils.escape_html PP.pp(@@routes, '')}</code></pre>"
+    env["rack.showstatus.detail"] = "<h2>Routes:</h2><pre><code>#{Rack::Utils.escape_html PP.pp(@@routes, '')}</code></pre>"
   end
 
-  attr_reader :res, :req
+  attr_reader :res, :req, :env
+
+  def wants(type, &block)
+    @wants << [type.split("/", 2), block]
+  end
+
+  def run_wants
+    t = accepts.map { |(type, subtype, _)|
+      @wants.find_all { |(wanttype, wantsubtype), _|
+        (type == wanttype       || type == '*') &&
+        (subtype == wantsubtype || subtype == '*')
+      }.sort_by { |(wanttype, wantsubtype), _|
+        (wanttype    == '*' ? 100 : 0) + 
+        (wantsubtype == '*' ?  10 : 0)
+      }.first
+    }
+
+    if t.first
+      t.first[1].call
+    else
+      res.status = 406
+    end
+  end
+
+  def accepts
+    (@env["HTTP_ACCEPT"] ||
+     Rack::File::MIME_TYPES[@EXT.to_s[1..-1]] ||
+     "*/*"
+     ).split(",").map { |line|
+      fulltype, *params = line.split(/;/)
+      type, subtype = fulltype.split("/", 2)
+      
+      params = Hash[*params.map { |part|
+                      part.split("=").map { |piece| piece.strip }
+                    }.flatten]
+      
+      [type.strip, subtype.strip, params]
+    }.sort_by { |(type, subtype, params)|
+      -(params["q"] || "1").to_f
+    }
+  end
 
   class << self
     def call(env)
       new.call(env)
     end
     
-  def define(desc, &block)
-    meth = method_name desc
-    verb, fields, rx = *tokenize(desc)
-    @@routes << [rx, verb, fields, meth]
-    define_method(meth, &block)
-  end
-
-  def GET(desc, &block)
-    define("GET #{desc}", &block)
-  end
-  def POST(desc, &block)
-    define("POST #{desc}", &block)
-  end
-  def PUT(desc, &block)
-    define("PUT #{desc}", &block)
-  end
-  def DELETE(desc, &block)
-    define("DELETE #{desc}", &block)
-  end
-
-  def tokenize(desc)
-    verb, path = desc.split(" ", 2)
-    if verb.nil? || path.nil?
-      raise ArgumentError, "Invalid description string #{desc}"
+    def define(desc, &block)
+      meth = method_name desc
+      verb, fields, rx = *tokenize(desc)
+      @@routes << [rx, verb, fields, meth]
+      define_method(meth, &block)
     end
-
-    verb.upcase!
-
-    fields = []
-    rx = Regexp.new "\\A" + path.gsub(/\{(.*?)(:.*?)?\}/) {
-      fields << $1
-      case $2
-      when "numeric"
-        "(\d+)"
-      when "all"
-        "(.*?)"
-      when "", nil
-        "([^/]*?)"
-      else
-        raise ArgumentError, "Invalid qualifier #$2 for #$1"
+    
+    def GET(desc, &block)    define("GET #{desc}", &block)    end
+    def POST(desc, &block)   define("POST #{desc}", &block)   end
+    def PUT(desc, &block)    define("PUT #{desc}", &block)    end
+    def DELETE(desc, &block) define("DELETE #{desc}", &block) end
+    
+    def tokenize(desc)
+      verb, path = desc.split(" ", 2)
+      if verb.nil? || path.nil?
+        raise ArgumentError, "Invalid description string #{desc}"
       end
-    } + "\\z"
-
-    [verb, fields, rx]
-  end
-
-  def method_name(desc)
-    desc.gsub(/\{(.*?)\}/) { $1.upcase }.delete(" ").gsub(/[^\w-]/, '_')
-  end
-  
+      
+      verb.upcase!
+      
+      fields = []
+      rx = Regexp.new "\\A" + path.gsub(/\{(.*?)(:.*?)?\}/) {
+        fields << $1
+        
+        if $1 == "EXT"
+          "(\\.\\w+)?"
+        else
+          case $2
+          when "numeric"
+            "(\d+?)"
+          when "all"
+            "(.*?)"
+          when "", nil
+            "([^/]*?)"
+          else
+            raise ArgumentError, "Invalid qualifier #$2 for #$1"
+          end
+        end
+      } + "\\z"
+      
+      [verb, fields, rx]
+    end
+    
+    def method_name(desc)
+      desc.gsub(/\{(.*?)\}/) { $1.upcase }.delete(" ").gsub(/[^\w-]/, '_')
+    end
   end
 end
