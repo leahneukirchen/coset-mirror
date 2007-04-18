@@ -1,8 +1,6 @@
 require 'pp'
 
 class Coset
-  @@routes = []  unless defined? @@routes
-
   def call(env)
     @env = env
     path = env["PATH_INFO"]
@@ -17,18 +15,27 @@ class Coset
     @wants = []
     @EXT = ""
 
-    @@routes.each { |rx, verb, fields, meth|
+    self.class.routes.each { |rx, verb, fields, meth|
       if path =~ rx && everb === verb
         fields.each_with_index { |field, index|
           instance_variable_set "@#{field}", $~[index+1]
         }
-        __send__(meth)
-        run_wants  unless @wants.empty?
+        begin
+          __send__(meth)
+          run_wants  unless @wants.empty?
+        rescue *self.class.exceptions.keys => e
+          status, message = self.class.exceptions.find_all { |klass, _|
+            e.kind_of? klass 
+          }.sort.first[1]
+          
+          res.status = status
+          env["rack.showstatus.detail"] = "<h2>" + message + "</h2>"
+        end
         return
       end
     }
     res.status = 404
-    env["rack.showstatus.detail"] = "<h2>Routes:</h2><pre><code>#{Rack::Utils.escape_html PP.pp(@@routes, '')}</code></pre>"
+    env["rack.showstatus.detail"] = "<h2>Routes:</h2><pre><code>#{Rack::Utils.escape_html PP.pp(self.class.routes, '')}</code></pre>"
   end
 
   attr_reader :res, :req, :env
@@ -77,11 +84,15 @@ class Coset
     def call(env)
       new.call(env)
     end
+
+    attr_reader :exceptions
+    attr_reader :routes
     
     def define(desc, &block)
       meth = method_name desc
       verb, fields, rx = *tokenize(desc)
-      @@routes << [rx, verb, fields, meth]
+      @routes ||= []
+      @routes << [rx, verb, fields, meth]
       define_method(meth, &block)
     end
     
@@ -89,6 +100,11 @@ class Coset
     def POST(desc, &block)   define("POST #{desc}", &block)   end
     def PUT(desc, &block)    define("PUT #{desc}", &block)    end
     def DELETE(desc, &block) define("DELETE #{desc}", &block) end
+
+    def map_exception(exception, status, message="")
+      @exceptions ||= {}
+      @exceptions[exception] = [status, message]
+    end
     
     def tokenize(desc)
       verb, path = desc.split(" ", 2)

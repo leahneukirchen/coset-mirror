@@ -18,75 +18,60 @@ class Glueball < Coset
     res["Content-Type"] = "application/atomserv+xml"
     res.write @svc.to_s
   end
+
+
+  class NotFound < IndexError; end
+  map_exception NotFound, 404
   
-  def feed(id)
+  def feed
     @svc.workspaces.first.collections.find { |feed| feed.id == @feed } or
-      raise IndexError
+      raise NotFound
   end
 
-  def entry(feedid, id)
-    feed = feed(feedid).entries.find { |entry| entry.id == @id } or
-      raise IndexError
+  def entry
+    feed.entries.find { |entry| entry.id == @id } or
+      raise NotFound
   end
+
 
   GET "/{feed}" do
-    begin
-      feed = feed(@feed)
-      feed.entries.each { |entry|
-        unless entry.edit_url
-          link = Atom::Link.new.update "rel" => "edit",
-                                       "href" => "#{feed.id}/#{entry.id}"
-          entry.links << link
-        end
-      }
-      
-      res["Content-Type"] = "application/atom+xml"
-      res.write feed.to_s
-    rescue IndexError
-      res.status = 404
-    end
+    feed.entries.each { |entry|
+      unless entry.edit_url
+        link = Atom::Link.new.update "rel" => "edit",
+        "href" => "#{feed.id}/#{entry.id}"
+        entry.links << link
+      end
+    }
+    
+    res["Content-Type"] = "application/atom+xml"
+    res.write feed.to_s
   end
 
   POST "/{feed}" do
-    feed = feed(@feed)
-
     new_entry = Atom::Entry.parse(req.body)
 
     feed << new_entry
     res["Content-Type"] = "application/atom+xml"
+    res.status = 201
     res.write new_entry.to_s
   end
 
   GET "/{feed}/{id}" do
-    begin
-      entry = entry(@feed, @id)
-      
-      res["Content-Type"] = "application/atom+xml"
-      res.write entry.to_s
-    rescue IndexError
-      res.status = 404
-    end
+    res["Content-Type"] = "application/atom+xml"
+    res.write entry.to_s
   end
 
   PUT "/{feed}/{id}" do
-    begin
-      new_entry = Atom::Entry.parse(req.body)
-      feed(@feed) << new_entry
-      new_entry.id = @id
-
-      res["Content-Type"] = "application/atom+xml"
-      res.write new_entry.to_s
-    rescue IndexError
-      res.status = 406          # not acceptable  (or create?)
-    end
+    new_entry = Atom::Entry.parse(req.body)
+    feed << new_entry
+    new_entry.id = @id
+    
+    res["Content-Type"] = "application/atom+xml"
+    res.write new_entry.to_s
   end
 
   DELETE "/{feed}/{id}" do
-    begin
-      feed(@feed).entries.delete_if { |e| e.id == @id }
-    rescue IndexError
-      res.status = 406          # not acceptable
-    end
+    feed.entries.delete_if { |e| e.id == @id }
   end
 end
 
@@ -110,7 +95,7 @@ col << Atom::Entry.new { |e|
 app = Glueball.new(svc)
 # app = Rack::Lint.new(app)
 app = Rack::ShowExceptions.new(app)
-# app = Rack::ShowStatus.new(app)
+app = Rack::ShowStatus.new(app)
 app = Rack::CommonLogger.new(app)
 
 Rack::Handler::WEBrick.run app, :Port => 9266

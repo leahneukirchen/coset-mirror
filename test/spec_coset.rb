@@ -10,6 +10,20 @@ class TestApp < Coset
   end
 end
 
+class TestApp2 < Coset
+  map_exception IndexError, 404
+  map_exception NameError, 500
+  
+  GET "/ie" do
+    raise IndexError
+  end
+
+  GET "/urgs" do
+    res.write "meh"
+    quux!
+  end
+end
+
 context "Coset" do
   specify "should parse Accept-headers correctly" do
 
@@ -45,5 +59,15 @@ context "Coset" do
       get("/index.txt", {"HTTP_ACCEPT" => nil})
     res.should.match "ASCII"     # extension
       
+  end
+
+  specify "should map exceptions" do
+    res = Rack::MockRequest.new(TestApp2).
+      get("/ie")
+    res.status.should.equal 404
+
+    res = Rack::MockRequest.new(TestApp2).
+      get("/urgs")
+    res.status.should.equal 500
   end
 end
