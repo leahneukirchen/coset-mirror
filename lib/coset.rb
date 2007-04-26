@@ -63,6 +63,7 @@ class Coset
   end
 
   def accepts
+    @env.delete "HTTP_ACCEPT"  if @env["HTTP_ACCEPT"] == "*/*"
     (@env["HTTP_ACCEPT"] ||
      Rack::File::MIME_TYPES[@EXT.to_s[1..-1]] ||
      "*/*"
