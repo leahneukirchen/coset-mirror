@@ -1,6 +1,5 @@
 require 'test/spec'
 
-require 'rack'
 require 'coset'
 
 class TestApp < Coset

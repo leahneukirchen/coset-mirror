@@ -75,6 +75,7 @@ class Glueball < Coset
   end
 end
 
+
 svc = Atom::Service.new
 ws = Atom::Workspace.new
 col = Atom::Collection.new("/blogone")
