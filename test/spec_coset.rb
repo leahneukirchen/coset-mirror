@@ -24,6 +24,34 @@ class TestApp2 < Coset
   end
 end
 
+class FooApp < Coset
+  GET "/foo" do
+    res.write "foo"
+  end
+
+  GET "/a" do
+    res.write "a"
+  end
+
+  GET "/duh" do
+    raise IndexError
+  end
+
+  map_exception IndexError, 500
+end
+
+class BarApp < FooApp
+  GET "/bar" do
+    res.write "bar"
+  end
+
+  GET "/a" do
+    res.write "b"
+  end
+
+  map_exception IndexError, 404
+end
+
 context "Coset" do
   specify "should parse Accept-headers correctly" do
 
@@ -69,5 +97,26 @@ context "Coset" do
     res = Rack::MockRequest.new(TestApp2).
       get("/urgs")
     res.status.should.equal 500
+  end
+
+  specify "should support inheritance properly" do
+    BarApp.ancestors.should.include FooApp
+    BarApp.ancestors.should.include Coset
+    
+    res = Rack::MockRequest.new(BarApp).get("/foo")
+    res.should.match "foo"
+
+    res = Rack::MockRequest.new(BarApp).get("/bar")
+    res.should.match "bar"
+
+    res = Rack::MockRequest.new(FooApp).get("/a")
+    res.should.match "a"
+    res = Rack::MockRequest.new(BarApp).get("/a")
+    res.should.match "b"
+
+    res = Rack::MockRequest.new(FooApp).get("/duh")
+    res.status.should.equal 500
+    res = Rack::MockRequest.new(BarApp).get("/duh")
+    res.status.should.equal 404
   end
 end

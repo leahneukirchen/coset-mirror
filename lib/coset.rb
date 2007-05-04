@@ -86,14 +86,18 @@ class Coset
       new.call(env)
     end
 
-    attr_reader :exceptions
-    attr_reader :routes
+    def inherited(newone)
+      newone.exceptions = (exceptions || {}).dup
+      newone.routes     = (routes     || []).dup
+    end
+
+    attr_accessor :exceptions
+    attr_accessor :routes
     
     def define(desc, &block)
       meth = method_name desc
       verb, fields, rx = *tokenize(desc)
-      @routes ||= []
-      @routes << [rx, verb, fields, meth]
+      routes << [rx, verb, fields, meth]
       define_method(meth, &block)
     end
     
@@ -103,8 +107,7 @@ class Coset
     def DELETE(desc, &block) define("DELETE #{desc}", &block) end
 
     def map_exception(exception, status, message="")
-      @exceptions ||= {}
-      @exceptions[exception] = [status, message]
+      exceptions[exception] = [status, message]
     end
     
     def tokenize(desc)
