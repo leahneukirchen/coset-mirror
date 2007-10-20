@@ -120,7 +120,7 @@ class Coset
       verb.upcase!
       
       fields = []
-      rx = Regexp.new "\\A" + path.gsub(/\{(.*?)(:.*?)?\}/) {
+      rx = Regexp.new "\\A" + path.gsub(/\{(.*?)(?::(.*?))?\}/) {
         fields << $1
         
         if $1 == "EXT"
