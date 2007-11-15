@@ -59,12 +59,12 @@ context "Coset" do
     res.should.match "HTML"
 
     res = Rack::MockRequest.new(TestApp).
-      get("/index.html", {"HTTP_ACCEPT" => "text/html ;q=0.5;v=1,text/plain"})
-    res.should.match "ASCII"
-
-    res = Rack::MockRequest.new(TestApp).
       get("/index.html", {"HTTP_ACCEPT" => "text/html ;q=0.5,text/plain;q=0.2"})
     res.should.match "HTML"
+
+    res = Rack::MockRequest.new(TestApp).
+      get("/index.html", {"HTTP_ACCEPT" => "text/html ;q=0.5;v=1,text/plain"})
+    res.should.match "HTML"     # extension overrides
 
     res = Rack::MockRequest.new(TestApp).
       get("/index.html", {"HTTP_ACCEPT" => "text/*"})
@@ -75,7 +75,7 @@ context "Coset" do
     res.should.match "HTML"     # first choice
 
     res = Rack::MockRequest.new(TestApp).
-      get("/index.html", {"HTTP_ACCEPT" => "x-noidea/x-whatthisis"})
+      get("/index", {"HTTP_ACCEPT" => "x-noidea/x-whatthisis"})
     res.status.should.equal 406 # not acceptable
 
     res = Rack::MockRequest.new(TestApp).
